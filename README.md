@@ -35,5 +35,4 @@ An analysis of the phishing campaign, with a particular focus on the malware win
 ## To Do :
 
 - Write the report in english
-- Found how is the dll injected through the new thread
 - Add analysis of the `vmtools.dll`.
