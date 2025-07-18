@@ -30,6 +30,7 @@ An analysis of the phishing campaign, with a particular focus on the malware win
 
 To run the PoC, you will need to redirect the http request to `ophibre.com` to your localhost or to the IP where the custom server ([server.py](PoC/server.py)) will be running.
 
+
 To do that, you will need to change the `hosts` file :
 
 ### On Linux (for those who will use *Wine Is Not an Emulator*) :
@@ -47,12 +48,31 @@ Add the line :
 ### On Windows :
 
 Open in privilege mode : `C:\Windows\System32\drivers\etc\hosts`
-
 Add the line :
 
 ```text
 <TARGET_IP> ophibre.com
 ```
+
+### Launch the PoC
+
+Then launch the python server in a command line :
+
+```cmd
+python.exe server.py
+```
+
+> Be careful to the location of the `.pem` files ! By default, server.py will search them in the directory [Ressources](Ressources/)
+
+Finally compile [dummy.c](PoC/dummy.c) and launch it :
+
+```cmd
+./dummy.exe
+```
+
+The following video is a proof of the functionnality of the PoC : [record_poc.mp4](PoC/record_poc.mp4)
+
+You can also watch how the server behave using the sample of the wine malware : [record_wine.mp4](Report/record_wine.mp4)
 
 ## References
 
