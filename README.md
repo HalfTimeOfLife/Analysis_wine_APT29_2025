@@ -34,5 +34,4 @@ An analysis of the phishing campaign, with a particular focus on the malware win
 
 ## To Do :
 
-- Write the report in english
 - Add analysis of the `vmtools.dll`.
